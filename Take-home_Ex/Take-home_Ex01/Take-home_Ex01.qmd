@@ -1,0 +1,8 @@
+---
+title: "Take-home Exercise 1"
+author: "Zhou Ao"
+---
+
+```{r}
+pacman::p_load(tidyverse)
+```
