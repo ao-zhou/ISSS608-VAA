@@ -5,13 +5,28 @@ website:
   title: "ISSS608-VAA"
   navbar:
     left:
+    - text: "In-class Exercise"
+      menu:
+        - text: "In-class Exercise 1"
+          href: "In-class_ex/In-class_Ex01/In-class_Ex01.html"
+        - text: "In-class Exercise 3"
+          href: "In-class_ex/In-class_Ex03/In-class_Ex03.html"
+        - text: "In-class Exercise 4"
+          href: "In-class_ex/In-class_Ex04/In-class_Ex04.html"
+        - text: "In-class Exercise 5"
+          href: "In-class_ex/In-class_Ex05/In-class_Ex05.html"
+    - text: "Take-home Exercise"
+      menu:
+        - text: "Take-home Exercise 1"
+          href: "Take-home_ex/Take-home_Ex01/Take-home_Ex01.html"
+    right: 
       - href: index.qmd
         text: Home
       - about.qmd
 
 format:
   html:
-    theme: cosmo
+    theme: minty
     css: styles.css
     toc: true
 
