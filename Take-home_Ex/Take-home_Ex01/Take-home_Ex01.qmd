@@ -274,7 +274,9 @@ ggplot(spend,
            fill = category)) +
   geom_violin(width = 2, alpha = 0.5) +
   geom_boxplot_interactive(width = 0.2, alpha = 0.5) +
-  theme(legend.position = "none")
+  theme(legend.position = "none") +
+  labs(y = "Spend")  +
+  ggtitle("Spend by Category")
 
 ```
 
@@ -288,7 +290,9 @@ ggplot(spend,
            fill = category)) +
   geom_violin(width = 2, alpha = 0.5) +
   geom_boxplot_interactive(width = 0.2, alpha = 0.5) +
-  theme(legend.position = "none")
+  theme(legend.position = "none") +
+  labs(y = "Spend")  +
+  ggtitle("Spend by Category")
 
 ```
 :::
