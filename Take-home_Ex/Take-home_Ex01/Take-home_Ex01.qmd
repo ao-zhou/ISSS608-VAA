@@ -199,8 +199,6 @@ ggplot(participants, aes(x = fct_rev(fct_infreq(educationLevel)))) +
   labs(x = "Education Level")  + 
   ggtitle("Count by Education Level")
 ```
-
-
 :::
 
 ### 3.1.2 Wage distribution by education level
@@ -297,7 +295,7 @@ ggplot(spend,
 ```
 :::
 
-### 3.2.2 Spend difference between people with and without kids 
+### 3.2.2 Spend difference between people with and without kids
 
 Create a table aggregating spend by participant.
 
@@ -321,7 +319,7 @@ ggbetweenstats(
 )
 ```
 
-## 3.3 Net income/loss 
+## 3.3 Net income and wage
 
 Aggregate the financial transactions for net and wage at participant level and then join with participants.
 
