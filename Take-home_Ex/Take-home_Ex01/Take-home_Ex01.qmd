@@ -1,8 +1,378 @@
 ---
 title: "Take-home Exercise 1"
 author: "Zhou Ao"
+date: "2023-05-14"
+
+format:
+  html: 
+    mainfont: gill sans
+    fontsize: 1.2em
 ---
 
+# 1. Overview
+
+City of Engagement, with **a total population of 50,000**, is a small city located at Country of Nowhere. The city serves as a service centre of an agriculture region surrounding the city. The main agriculture of the region is fruit farms and vineyards. The local council of the city is in the process of preparing the Local Plan 2023. **A sample survey of 1,000 representative residents** had been conducted to collect data related to their household **demographic and spending patterns**, among other things. The city aims to use the data to assist with their major community revitalization efforts, including how to allocate a very large city renewal grant they have recently received.
+
+# 2. Data Preparation
+
+## 2.1 Load R packages
+
+The code chunk below uses `pacman::p_load()` to check if packages are installed. If they are, they will be launched into R. The packages installed are:
+
+-   `tidyverse`: A collection of core packages designed for data science, used extensively for data preparation and wrangling.
+
+-   `ggstatsplot`: for creating graphics with details from statistical tests.
+
+-   `ggiraph`: for making 'ggplot' graphics interactive
+
+-   `plotly`: for plotting interactive statistical graphs.
+
+-   `dplyr`: for data wrangling and transformation.
+
+-   `knitr`: for dynamic report generation.
+
+-   `ggridges`: for plotting ridgeline plots
+
+-   `ggdist`: for visualising distribution and uncertainty
+
+All packages can be found within CRAN.
+
 ```{r}
-pacman::p_load(tidyverse)
+#Load packages
+pacman::p_load(tidyverse, ggstatsplot, ggiraph, plotly, dplyr, knitr, ggridges, ggdist, ggthemes)
 ```
+
+## 2.2 Import the data
+
+Importing the data from csv using `read_csv()` from Participants and FinancialJounal csv files.
+
+```{r}
+#Import Data
+participants <- read_csv("data/Participants.csv")
+financial_journal <-read_csv("data/FinancialJournal.csv")
+```
+
+## 2.3 Data wrangling
+
+### 2.3.1 Check data types
+
+First, check if all data imported are showing the correct types.
+
+```{r}
+participants
+```
+
+For `participants` table, we noticed below:
+
+-   **participantId** is in `<dbl>` format and needs to be converted to `<factor>`.
+
+-   **householdSize** and **age** are in `<dbl>` format and need to be converted to `<int>`.
+
+-   **educationLevel** and **interestGroup** need to be converted into `<factor>` from `<chr>`.
+
+The code chunk below uses `mutate_at()` from `dplyr` package to convert data type.
+
+```{r}
+#| eval: false
+
+# convert participantId, educationLevel and interestGroup to factor
+col1 <- c("participantId", "educationLevel", "interestGroup")
+participants %>% mutate_at(col1, as.factor) 
+
+# convert householdSize and ago to integer
+col2 <- c("householdSize", "age")
+participants %>% mutate_at(col2, as.integer) 
+```
+
+Then we will check the same for `financial_journal`.
+
+```{r}
+financial_journal
+```
+
+For `financial_journal` table, we noticed below:
+
+-   **participantId** is in `<dbl>` format and needs to be converted to `<factor>`.
+
+-   **category** needs to be converted into `<factor>` from `<chr>`.
+
+Similar to above, the code chunk below uses `mutate_at()` from `dplyr` package to convert data type.
+
+```{r}
+#| eval: false
+
+# convert participantId and category into factor
+col3 <- c( "participantId", "category")
+financial_journal %>% mutate_at(col3, as.factor) 
+```
+
+### 2.3.2 Check missing values
+
+`is.na()` function is used to confirm that there are no missing values in the datasets.
+
+```{r}
+any(is.na(participants))
+```
+
+```{r}
+any(is.na(financial_journal))
+```
+
+### 2.3.3 Data cleaning
+
+Check data summary for `participants` using `unique()` for categorical and discrete numeric data.
+
+```{r}
+unique(participants$householdSize)
+```
+
+```{r}
+unique(participants$haveKids)
+```
+
+```{r}
+sort(unique(participants$age))
+```
+
+```{r}
+unique(participants$educationLevel)
+```
+
+```{r}
+sort(unique(participants$interestGroup))
+```
+
+Check the same `financial_journal`.
+
+```{r}
+unique(financial_journal$category)
+```
+
+### 2.3.4 Prepare the data for visualisation
+
+Group the `financial_journals` by `participantId` and `category`.
+
+```{r}
+fin_agg <- financial_journal %>% group_by(participantId, category) %>% summarise(amount = sum(amount))
+```
+
+Use `left_join()` from `dplyr` package to join two tables.
+
+```{r}
+combined <- left_join(fin_agg, participants, by = c("participantId" = "participantId"))
+```
+
+The final dataset **combined** is displayed below using `knitr::kable()` function.
+
+```{r}
+kable(head(combined), "simple")
+```
+
+# 3. Visualisation
+
+## 3.1 Education level
+
+### 3.1.1 Education level distribution
+
+Check the distribution of education level. People graduated from high school and college represent more than half of the sample.
+
+::: panel-tabset
+## The plot
+
+```{r}
+#| echo: false
+ggplot(participants, aes(x = fct_rev(fct_infreq(educationLevel)))) +
+  geom_bar(width = 0.5) +
+  coord_flip() +
+  labs(x = "Education Level") + 
+  ggtitle("Count by Education Level")
+ 
+```
+
+## The code chunk
+
+```{r}
+#| eval: false
+ggplot(participants, aes(x = fct_rev(fct_infreq(educationLevel)))) +
+  geom_bar(width = 0.5) +
+  coord_flip() +
+  labs(x = "Education Level")  + 
+  ggtitle("Count by Education Level")
+```
+
+
+:::
+
+### 3.1.2 Wage distribution by education level
+
+With no surprise, people with higher education has higher median wage. Interestingly, wage distribution for people with low and [high school or college]{.underline} education has two modes.
+
+::: panel-tabset
+## The plot
+
+```{r}
+#| echo: false
+ggplot(subset(combined, category == "Wage"),
+       aes(x = amount,
+           y = educationLevel,
+           fill = factor(stat(quantile))
+           )) + 
+  stat_density_ridges(
+    geom = "density_ridges_gradient",
+    calc_ecdf = TRUE,
+    quantiles = 4,
+    quantile_lines = TRUE
+  ) +
+  scale_fill_viridis_d(name = "Quartiles") +
+  theme_ridges() +
+  labs(x = "Wage", y = "Education level") +
+  ggtitle("Wage distribution by Education Level")
+```
+
+## The code chunk
+
+```{r}
+#| eval: false
+ggplot(subset(combined, category == "Wage"),
+       aes(x = amount,
+           y = educationLevel,
+           fill = factor(stat(quantile))
+           )) + 
+  stat_density_ridges(
+    geom = "density_ridges_gradient",
+    calc_ecdf = TRUE,
+    quantiles = 4,
+    quantile_lines = TRUE
+  ) +
+  scale_fill_viridis_d(name = "Quartiles") +
+  theme_ridges() +
+  labs(x = "Wage", y = "Education level")  +
+  ggtitle("Wage distribution by Education Level")
+```
+:::
+
+## 3.2 Spend
+
+Create a table containing only spend for visualisation in this section.
+
+```{r}
+spend <- subset(combined, category != "Wage" & category != "RentAdjustment")
+```
+
+### 3.2.1 Spend by category
+
+Shelter takes up a big portion for spend according to the sample.
+
+::: panel-tabset
+## The plot
+
+```{r}
+#| echo: false
+ggplot(spend,
+       aes(x = category, 
+           y = - amount, 
+           fill = category)) +
+  geom_violin(width = 2, alpha = 0.5) +
+  geom_boxplot_interactive(width = 0.2, alpha = 0.5) +
+  theme(legend.position = "none")
+
+```
+
+## The code chunk
+
+```{r}
+#| eval: false
+ggplot(spend,
+       aes(x = category, 
+           y = - amount, 
+           fill = category)) +
+  geom_violin(width = 2, alpha = 0.5) +
+  geom_boxplot_interactive(width = 0.2, alpha = 0.5) +
+  theme(legend.position = "none")
+
+```
+:::
+
+### 3.2.2 Spend difference between people with and without kids 
+
+Create a table aggregating spend by participant.
+
+```{r}
+spend_agg <- spend %>% group_by(participantId, haveKids) %>% summarise(amount = - sum(amount))
+```
+
+In the code chunk below, [`ggbetweenstats()`](https://indrajeetpatil.github.io/ggstatsplot/reference/ggbetweenstats.html) is used to build a visual for two-sample mean test of spend amount by having kids or not. We can see that with 95% confidence, people having kids spend more than people having no kids.
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+ggbetweenstats(
+  data = spend_agg,
+  x = haveKids, 
+  y = amount,
+  title = "Two-sample mean test for spend by having kids",
+  type = "np",
+  messages = FALSE
+)
+```
+
+## 3.3 Net income/loss 
+
+Aggregate the financial transactions for net and wage at participant level and then join with participants.
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+# create a table with participants net income/loss
+net <- financial_journal %>% group_by(participantId) %>% summarise(net_income = sum(amount))
+
+# create a table with participants wage
+wage <- subset(financial_journal, category == "Wage") %>% group_by(participantId) %>% summarise(wage = sum(amount))
+
+# join the net income/loss, wage table with participants
+net_combined <- left_join(net, wage, by = c("participantId" = "participantId"))
+net_combined <- left_join(net_combined, participants, by = c("participantId" = "participantId"))
+```
+
+Check the correlation between wage and net income. People who are single have more net income compared to people who are married with same amount of wage.
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+#Initiating the base plot
+plot_ly(data = net_combined,
+        x = ~wage,
+        y = ~net_income,
+        type = 'scatter',
+        mode = 'markers',
+        sizes = c(5, 15),
+        color = ~factor(householdSize),
+        marker = list(opacity = 0.6,
+                      sizemode = 'diameter',
+                      line = list(width = 0.2, color = '#FFFFFF')),
+        
+#Creating tooltip details
+        hovertemplate = ~paste("<br>Participant Id", participantId,
+                               "<br>Household Size:", householdSize,
+                               "<br>Have Kids:", haveKids,
+                               "<br>Age:", age,
+                               "<br>Education Level:", educationLevel,
+                               "<br>Interest Group:", interestGroup)) |>
+
+  
+#Configuring the plot and axis title and range  
+  layout(title = "Correlation between wage and net income",
+         xaxis = list(title = "Wage "
+                      ),
+         yaxis = list(title = "Net income"
+                      ))
+
+         
+```
+
+::: callout-tip
+Hoover over to see the details of the dot.
+:::

@@ -29,6 +29,10 @@ format:
     theme: minty
     css: styles.css
     toc: true
+execute: 
+  echo: true
+  eval: true
+  warning: false
 
 editor: visual
 
