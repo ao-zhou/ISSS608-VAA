@@ -1,0 +1,24 @@
+---
+title: "Take-home Exercise 2"
+author: "Zhou Ao"
+date: "2023-06-04"
+
+format:
+  html: 
+    mainfont: gill sans
+    fontsize: 1.2em
+---
+
+# 1. Overview
+
+The country of Oceanus has sought FishEye International\'s help in identifying companies possibly engaged in illegal, unreported, and unregulated (IUU) fishing. As part of the collaboration, FishEye\'s analysts received import/export data for Oceanus\' marine and fishing industries. However, Oceanus has informed FishEye that the data is incomplete. To facilitate their analysis, FishEye transformed the trade data into a knowledge graph. Using this knowledge graph, they hope to understand business relationships, including finding links that will help them stop IUU fishing and protect marine species that are affected by it. FishEye analysts found that node-link diagrams gave them a good high-level overview of the knowledge graph. However, they are now looking for visualizations that provide more detail about patterns for entities in the knowledge graph.
+
+# 2. The Data 
+
+## 2.1 Getting Started
+
+Install R packages needed for data preparation, data wrangling, data analysis and visualisation using the code chunk below.
+
+```{r}
+pacman::p_load(jsonlite, tidyverse, tidygraph, ggraph, visNetwork)
+```

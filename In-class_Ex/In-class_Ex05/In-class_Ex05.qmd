@@ -1,0 +1,111 @@
+---
+title: "In-class Exercise 5"
+
+format:
+  html: 
+    code-fold: true
+    code-summary: "Show the code"
+execute: 
+  eval: true
+  echo: true
+  warning: false
+---
+
+# 1. Install R packages
+
+`lubridate` is part of `tidyverse` now, so there is no need to import `lubridate` separately.
+
+```{r}
+pacman::p_load(igraph, tidyverse, tidygraph, ggraph, visNetwork, clock, graphlayouts)
+```
+
+# 2. Data preparation
+
+## 2.1 Import nodes and edges data
+
+```{r}
+GAStech_nodes <- read_csv("data/GAStech_email_node.csv")
+GAStech_edges <- read_csv("data/GAStech_email_edge-v2.csv")
+```
+
+::: callout-tip
+For the edges data frame, the first column should always be source and second column be target.
+:::
+
+::: callout-important
+## This is import.
+
+For missing values, use "unknown" or "no value" instead of build-in missing value function to avoid losing the data entry.
+:::
+
+## 2.2 Review the imported data
+
+Use glimpse() of dplyr to examine the structure of the data frame.
+
+```{r}
+glimpse(GAStech_edges)
+```
+
+Notice that the SentDate is categorized as "Character" instead of "Date" data type, and we need to change it back to "Date"data type before further analysis.
+
+## 2.3 Data wrangling
+
+### 2.3.1 Wrangling Time
+
+The code chunk below will change the data type of SentDate to "Date".
+
+```{r}
+GAStech_edges <- GAStech_edges %>%
+  mutate(SendDate = dmy(SentDate)) %>%
+  mutate(Weekday = wday(SentDate, label = TRUE, abbr = FALSE))
+```
+
+Review the data again after the change.
+
+```{r}
+glimpse(GAStech_edges)
+```
+
+### 2.3.2 Wrangling attributes
+
+With a close examination, GAStech_edges data.frame is at email records level, which is not very useful for visualization. Therefore, we will aggregate individual by date, senders, receivers, main subject and day of the week.
+
+```{r}
+GAStech_edges_aggregated <- GAStech_edges %>%
+  filter(MainSubject == "Work related") %>%
+  group_by(source, target, Weekday) %>%
+    summarise(Weight = n()) %>%
+  filter(source != target) %>%
+  filter(Weight > 1) %>%
+  ungroup()
+```
+
+::: callout-tip
+Always check [dplyr](https://dplyr.tidyverse.org) to use the latest way to wrangle data. Google result may show old ways to solve a problem
+:::
+
+::: callout-note
+ungroup() at the end of the code chunk is for future calculation. If it's not done, when we do calculation later it will be based on the grouped data.
+:::
+
+Review the data again after the change.
+
+```{r}
+glimpse(GAStech_edges_aggregated)
+```
+
+# 3. Creating network objects
+
+Use `tbl_graph()` from `tidygraph` to build a network graph data.frame.
+
+```{r}
+GAStech_graph <- tbl_graph(nodes = GAStech_nodes,
+                           edges = GAStech_edges_aggregated,
+                           directed = TRUE)
+```
+
+Review the output tidygraph's graph object.
+
+```{r}
+GAStech_graph
+```
