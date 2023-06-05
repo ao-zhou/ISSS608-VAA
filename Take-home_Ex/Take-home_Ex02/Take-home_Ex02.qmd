@@ -7,11 +7,20 @@ format:
   html: 
     mainfont: gill sans
     fontsize: 1.2em
+    warning: False
 ---
 
 # 1. Overview
 
 The country of Oceanus has sought FishEye International's help in identifying companies possibly engaged in illegal, unreported, and unregulated (IUU) fishing. As part of the collaboration, FishEye's analysts received import/export data for Oceanus' marine and fishing industries. However, Oceanus has informed FishEye that the data is incomplete. To facilitate their analysis, FishEye transformed the trade data into a knowledge graph. Using this knowledge graph, they hope to understand business relationships, including finding links that will help them stop IUU fishing and protect marine species that are affected by it. FishEye analysts found that node-link diagrams gave them a good high-level overview of the knowledge graph. However, they are now looking for visualizations that provide more detail about patterns for entities in the knowledge graph.
+
+## 1.1 Task
+
+Use visual analytics to identify temporal patterns for individual entities and between entities in the knowledge graph FishEye created from trade records. Categorize the types of business relationship patterns.
+
+## 1.2 Reference
+
+Reference from [Mini-Challenge 2](https://vast-challenge.github.io/2023/MC2.html) of [VAST Challenge 2023](https://vast-challenge.github.io/2023/).
 
 # 2. The Data
 
@@ -20,13 +29,891 @@ The country of Oceanus has sought FishEye International's help in identifying co
 Install R packages needed for data preparation, data wrangling, data analysis and visualisation using the code chunk below.
 
 ```{r}
-pacman::p_load(jsonlite, tidyverse, tidygraph, ggraph, visNetwork)
+pacman::p_load(jsonlite, tidyverse, tidygraph, ggraph, visNetwork, igraph)
 ```
 
 ## 2.2 Data Import
+
+The code chunk below imports data using `fromJSON()` from `jsonlite` package into R environment.
 
 ```{r}
 mc2_data <- fromJSON("data/mc2_challenge_graph.json")
 ```
 
 ## 2.3 Data Wrangling
+
+### 2.3.1 The edges data
+
+#### Extracting edges data
+
+Extract edges data table from mc2_data list object and save the output in a tibble data frame object called mc2_edges using the code chunk below.
+
+```{r}
+mc2_edges <- as_tibble(mc2_data$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>% 
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu, volumeteu, weightkg, valueofgoodsusd) %>%
+distinct()
+```
+
+::: callout-note
+-   `ymd()` of **lubridate** package (embedded in **tidyverse** now) is used to covert *arrivaldate* field from character data type into date data type.
+
+-   `year()` of **lubridate** package (embedded in **tidyverse** now) is used to convert the values in ArrivalDate field into year values.
+:::
+
+#### Preparing edges data
+
+Prepare an aggregated edges table by grouping source, target, hscode, Year and filtering hscode is equal to 306170 and Year is equal to 2034.
+
+```{r}
+mc2_edges_aggregated <- mc2_edges %>%
+  filter(hscode == "306170" & Year == "2034") %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source != target) %>%
+  filter(weights > 20) %>%
+  ungroup()
+```
+
+::: callout-note
+-   `summarise()` is used to count the aggregated records.
+
+-   `filter()` is then used to perform two selection:
+
+    -   to select all records whereby source are not equal to target, and
+
+    -   to select all records whereby the values of their weights field are greater than 20
+:::
+
+### 2.3.2 The nodes data
+
+#### Extracting nodes data
+
+Extract nodes data table from mc2_data list object and save the output in a tibble data frame object called mc2_nodes using the code chunk below.
+
+```{r}
+mc2_nodes <- as_tibble(mc2_data$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+```
+
+#### Preparing nodes data
+
+To ensure that all the nodes in the nodes data tables include all the source and target values, we will prepare a new nodes data table using the source and target fields of `mc2_edges_aggregated` data table.
+
+```{r}
+id1 <- mc2_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+id2 <- mc2_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+mc2_nodes_extracted <- rbind(id1, id2) %>%
+  distinct()
+```
+
+### 2.3.3 Building the tidygraph data
+
+The code chunk below is used to build the tidygraph data model.
+
+```{r}
+mc2_graph <- tbl_graph(nodes = mc2_nodes_extracted,
+                       edges = mc2_edges_aggregated,
+                       directed = TRUE)
+```
+
+#### Review the output of tidygraph's graph object
+
+-   The output below reveals that mc2_graph is a tbl_graph object with 2358 nodes and 4685 edges.
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+mc2_graph
+```
+
+#### Visualising the `tidygraph` data model
+
+Use function from `ggraph` package to plot a simple network graph to check if the `tidygraph` model has been prepared correctly.
+
+```{r}
+ggraph(mc2_graph,
+       layout = "fr") +
+  geom_edge_link(aes()) +
+  geom_node_point(aes()) +
+  theme_graph()
+```
+
+Export data objects into rds format for future use.
+
+```{r}
+write_rds(mc2_nodes_extracted, "data/mc2_nodes_extracted.rds")
+write_rds(mc2_edges_aggregated, "data/mc2_edges_aggregated.rds")
+write_rds(mc2_graph, "data/mc2_graph.rds")
+```
+
+### 2.3.4 Preparing network data for visNetwork
+
+Prepare two tibble data frames (one for nodes and one for edges), so that we can plot interactive network graph using `visNetwork` package.
+
+#### Preparing edges tibble data frame
+
+Note that `tidygraph` model is in R list format. The code chunk below will be used to extract and convert the edges into a tibble data frame.
+
+```{r}
+edges_df <- mc2_graph %>%
+  activate(edges) %>%
+  as_tibble()
+```
+
+#### Preparing nodes tibble data frame
+
+Use the code chunk below to prepare a nodes tibble data frame.
+
+```{r}
+nodes_df <- mc2_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id = row_number()) %>%
+  select(id, label)
+```
+
+::: callout-important
+`visNetwork` is expecting a field called `id` in the tibble data frame. The field must be in **numeric** data type and it must be **unique** to the values in the `from` and `to` field of `edges_df.`
+:::
+
+```{r}
+require(devtools)
+install_version("knitr", version = "1.42", repos = "http://cran.us.r-project.org")
+```
+
+::: callout-important
+Encountering error while rendering with *knitr 1.43*. Thus using `devtools` to install older version of *knitr*.
+:::
+
+```{r}
+visNetwork(nodes_df,
+           edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", 
+           smooth = list(enabled = TRUE, 
+                         type = "curvedCW"))
+```
+
+## 2.4 Preparing groups data 
+
+Use the same methodology from section 2.3 to prepare network data from groups identified by FishEye.
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+
+carp <- fromJSON("data/bundles/carp.json")
+
+carp_edges <- as_tibble(carp$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>%
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu, 
+         volumeteu, weightkg) %>% 
+  distinct()
+
+carp_edges_aggregated <- carp_edges %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
+
+carp_nodes <- as_tibble(carp$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+
+carp_id1 <- carp_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+carp_id2 <- carp_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+carp_nodes_extracted <- rbind(carp_id1, carp_id2) %>%
+  distinct()
+
+carp_graph <- tbl_graph(nodes = carp_nodes_extracted,
+                       edges = carp_edges_aggregated,
+                       directed = TRUE)
+
+carp_edges_df <- carp_graph %>%
+  activate(edges) %>%
+  as_tibble()
+
+
+carp_nodes_df <- carp_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id=row_number()) %>%
+  select(id, label)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+
+catfish <- fromJSON("data/bundles/catfish.json")
+
+catfish_edges <- as_tibble(catfish$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>%
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu) %>% 
+  distinct()
+
+catfish_edges_aggregated <- catfish_edges %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
+
+catfish_nodes <- as_tibble(catfish$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+
+catfish_id1 <- catfish_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+catfish_id2 <- catfish_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+catfish_nodes_extracted <- rbind(catfish_id1, catfish_id2) %>%
+  distinct()
+
+catfish_graph <- tbl_graph(nodes = catfish_nodes_extracted,
+                       edges = catfish_edges_aggregated,
+                       directed = TRUE)
+
+catfish_edges_df <- catfish_graph %>%
+  activate(edges) %>%
+  as_tibble()
+
+
+catfish_nodes_df <- catfish_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id=row_number()) %>%
+  select(id, label)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+
+chubMackerel <- fromJSON("data/bundles/chub_mackerel.json")
+
+chubMackerel_edges <- as_tibble(chubMackerel$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>%
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu) %>% 
+  distinct()
+
+chubMackerel_edges_aggregated <- chubMackerel_edges %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
+
+chubMackerel_nodes <- as_tibble(chubMackerel$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+
+chubMackerel_id1 <- chubMackerel_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+chubMackerel_id2 <- chubMackerel_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+chubMackerel_nodes_extracted <- rbind(chubMackerel_id1, chubMackerel_id2) %>%
+  distinct()
+
+chubMackerel_graph <- tbl_graph(nodes = chubMackerel_nodes_extracted,
+                       edges = chubMackerel_edges_aggregated,
+                       directed = TRUE)
+
+chubMackerel_edges_df <- chubMackerel_graph %>%
+  activate(edges) %>%
+  as_tibble()
+
+
+chubMackerel_nodes_df <- chubMackerel_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id=row_number()) %>%
+  select(id, label)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+
+cod2 <- fromJSON("data/bundles/cod2.json")
+
+cod2_edges <- as_tibble(cod2$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>%
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu) %>% 
+  distinct()
+
+cod2_edges_aggregated <- cod2_edges %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
+
+cod2_nodes <- as_tibble(cod2$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+
+cod2_id1 <- cod2_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+cod2_id2 <- cod2_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+cod2_nodes_extracted <- rbind(cod2_id1, cod2_id2) %>%
+  distinct()
+
+cod2_graph <- tbl_graph(nodes = cod2_nodes_extracted,
+                       edges = cod2_edges_aggregated,
+                       directed = TRUE)
+
+cod2_edges_df <- cod2_graph %>%
+  activate(edges) %>%
+  as_tibble()
+
+
+cod2_nodes_df <- cod2_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id=row_number()) %>%
+  select(id, label)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+
+herring <- fromJSON("data/bundles/herring.json")
+
+herring_edges <- as_tibble(herring$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>%
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu) %>% 
+  distinct()
+
+herring_edges_aggregated <- herring_edges %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
+
+herring_nodes <- as_tibble(herring$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+
+herring_id1 <- herring_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+herring_id2 <- herring_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+herring_nodes_extracted <- rbind(herring_id1, herring_id2) %>%
+  distinct()
+
+herring_graph <- tbl_graph(nodes = herring_nodes_extracted,
+                       edges = herring_edges_aggregated,
+                       directed = TRUE)
+
+herring_edges_df <- herring_graph %>%
+  activate(edges) %>%
+  as_tibble()
+
+herring_nodes_df <- herring_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id=row_number()) %>%
+  select(id, label)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+
+lichen <- fromJSON("data/bundles/lichen.json")
+
+lichen_edges <- as_tibble(lichen$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>%
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu) %>% 
+  distinct()
+
+lichen_edges_aggregated <- lichen_edges %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
+
+lichen_nodes <- as_tibble(lichen$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+
+lichen_id1 <- lichen_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+lichen_id2 <- lichen_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+lichen_nodes_extracted <- rbind(lichen_id1, lichen_id2) %>%
+  distinct()
+
+lichen_graph <- tbl_graph(nodes = lichen_nodes_extracted,
+                       edges = lichen_edges_aggregated,
+                       directed = TRUE)
+
+lichen_edges_df <- lichen_graph %>%
+  activate(edges) %>%
+  as_tibble()
+
+lichen_nodes_df <- lichen_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id=row_number()) %>%
+  select(id, label)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+
+mackerel <- fromJSON("data/bundles/mackerel.json")
+
+mackerel_edges <- as_tibble(mackerel$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>%
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu) %>% 
+  distinct()
+
+mackerel_edges_aggregated <- mackerel_edges %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
+
+mackerel_nodes <- as_tibble(mackerel$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+
+mackerel_id1 <- mackerel_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+mackerel_id2 <- mackerel_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+mackerel_nodes_extracted <- rbind(mackerel_id1, mackerel_id2) %>%
+  distinct()
+
+mackerel_graph <- tbl_graph(nodes = mackerel_nodes_extracted,
+                       edges = mackerel_edges_aggregated,
+                       directed = TRUE)
+
+mackerel_edges_df <- mackerel_graph %>%
+  activate(edges) %>%
+  as_tibble()
+
+mackerel_nodes_df <- mackerel_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id=row_number()) %>%
+  select(id, label)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+
+pollock <- fromJSON("data/bundles/pollock.json")
+
+pollock_edges <- as_tibble(pollock$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>%
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu) %>% 
+  distinct()
+
+pollock_edges_aggregated <- pollock_edges %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
+
+pollock_nodes <- as_tibble(pollock$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+
+pollock_id1 <- pollock_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+pollock_id2 <- pollock_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+pollock_nodes_extracted <- rbind(pollock_id1, pollock_id2) %>%
+  distinct()
+
+pollock_graph <- tbl_graph(nodes = pollock_nodes_extracted,
+                       edges = pollock_edges_aggregated,
+                       directed = TRUE)
+
+pollock_edges_df <- pollock_graph %>%
+  activate(edges) %>%
+  as_tibble()
+
+pollock_nodes_df <- pollock_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id=row_number()) %>%
+  select(id, label)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+
+salmon_wgl <- fromJSON("data/bundles/salmon_wgl.json")
+
+salmon_wgl_edges <- as_tibble(salmon_wgl$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>%
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu) %>% 
+  distinct()
+
+salmon_wgl_edges_aggregated <- salmon_wgl_edges %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
+
+salmon_wgl_nodes <- as_tibble(salmon_wgl$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+
+salmon_wgl_id1 <- salmon_wgl_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+salmon_wgl_id2 <- salmon_wgl_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+salmon_wgl_nodes_extracted <- rbind(salmon_wgl_id1, salmon_wgl_id2) %>%
+  distinct()
+
+salmon_wgl_graph <- tbl_graph(nodes = salmon_wgl_nodes_extracted,
+                       edges = salmon_wgl_edges_aggregated,
+                       directed = TRUE)
+
+salmon_wgl_edges_df <- salmon_wgl_graph %>%
+  activate(edges) %>%
+  as_tibble()
+
+salmon_wgl_nodes_df <- salmon_wgl_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id=row_number()) %>%
+  select(id, label)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+
+salmon <- fromJSON("data/bundles/salmon.json")
+
+salmon_edges <- as_tibble(salmon$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>%
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu) %>% 
+  distinct()
+
+salmon_edges_aggregated <- salmon_edges %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
+
+salmon_nodes <- as_tibble(salmon$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+
+salmon_id1 <- salmon_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+salmon_id2 <- salmon_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+salmon_nodes_extracted <- rbind(salmon_id1, salmon_id2) %>%
+  distinct()
+
+salmon_graph <- tbl_graph(nodes = salmon_nodes_extracted,
+                       edges = salmon_edges_aggregated,
+                       directed = TRUE)
+
+salmon_edges_df <- salmon_graph %>%
+  activate(edges) %>%
+  as_tibble()
+
+salmon_nodes_df <- salmon_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id=row_number()) %>%
+  select(id, label)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+
+shark <- fromJSON("data/bundles/shark.json")
+
+shark_edges <- as_tibble(shark$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>%
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu) %>% 
+  distinct()
+
+shark_edges_aggregated <- shark_edges %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
+
+shark_nodes <- as_tibble(shark$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+
+shark_id1 <- shark_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+shark_id2 <- shark_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+shark_nodes_extracted <- rbind(shark_id1, shark_id2) %>%
+  distinct()
+
+shark_graph <- tbl_graph(nodes = shark_nodes_extracted,
+                       edges = shark_edges_aggregated,
+                       directed = TRUE)
+
+shark_edges_df <- shark_graph %>%
+  activate(edges) %>%
+  as_tibble()
+
+shark_nodes_df <- shark_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id=row_number()) %>%
+  select(id, label)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+
+tuna <- fromJSON("data/bundles/tuna.json")
+
+tuna_edges <- as_tibble(tuna$links) %>%
+  mutate(ArrivalDate = ymd(arrivaldate)) %>%
+  mutate(Year = year(ArrivalDate)) %>%
+  select(source, target, ArrivalDate, Year, hscode, valueofgoods_omu) %>% 
+  distinct()
+
+tuna_edges_aggregated <- tuna_edges %>%
+  group_by(source, target, hscode, Year) %>%
+    summarise(weights = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
+
+tuna_nodes <- as_tibble(tuna$nodes) %>%
+  select(id, shpcountry, rcvcountry)
+
+tuna_id1 <- tuna_edges_aggregated %>%
+  select(source) %>%
+  rename(id = source)
+tuna_id2 <- tuna_edges_aggregated %>%
+  select(target) %>%
+  rename(id = target)
+tuna_nodes_extracted <- rbind(tuna_id1, tuna_id2) %>%
+  distinct()
+
+tuna_graph <- tbl_graph(nodes = tuna_nodes_extracted,
+                       edges = tuna_edges_aggregated,
+                       directed = TRUE)
+
+tuna_edges_df <- tuna_graph %>%
+  activate(edges) %>%
+  as_tibble()
+
+tuna_nodes_df <- tuna_graph %>%
+  activate(nodes) %>%
+  as_tibble() %>%
+  rename(label = id) %>%
+  mutate(id=row_number()) %>%
+  select(id, label)
+```
+
+# 3. Visualisation
+
+## 3.1 Network graph 
+
+### 3.1.1 Plot network graph from 12 groups
+
+#### The carp group
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+visNetwork(carp_nodes_df, carp_edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", smooth = list(enabled = TRUE, type = "curvedCW"))
+```
+
+#### The catfish group
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+visNetwork(catfish_nodes_df, catfish_edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", smooth = list(enabled = TRUE, type = "curvedCW"))
+```
+
+#### The chub_mackerel group
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+visNetwork(chubMackerel_nodes_df, chubMackerel_edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", smooth = list(enabled = TRUE, type = "curvedCW"))
+```
+
+#### The cod2 group
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+visNetwork(cod2_nodes_df, cod2_edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", smooth = list(enabled = TRUE, type = "curvedCW"))
+```
+
+#### The herring group
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+visNetwork(herring_nodes_df, herring_edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", smooth = list(enabled = TRUE, type = "curvedCW"))
+```
+
+#### The lichen group
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+visNetwork(lichen_nodes_df, lichen_edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", smooth = list(enabled = TRUE, type = "curvedCW"))
+```
+
+#### The mackerel group
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+visNetwork(mackerel_nodes_df, mackerel_edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", smooth = list(enabled = TRUE, type = "curvedCW"))
+```
+
+#### The pollock group
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+visNetwork(pollock_nodes_df, pollock_edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", smooth = list(enabled = TRUE, type = "curvedCW"))
+```
+
+#### The salmon_wgl group
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+visNetwork(salmon_wgl_nodes_df, salmon_wgl_edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", smooth = list(enabled = TRUE, type = "curvedCW"))
+```
+
+#### The salmon group
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+visNetwork(salmon_nodes_df, salmon_edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", smooth = list(enabled = TRUE, type = "curvedCW"))
+```
+
+#### The shark group
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+visNetwork(shark_nodes_df, shark_edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", smooth = list(enabled = TRUE, type = "curvedCW"))
+```
+
+#### The tuna group
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+visNetwork(tuna_nodes_df, tuna_edges_df) %>%
+  visIgraphLayout(layout = "layout_with_fr") %>%
+  visEdges(arrows = "to", smooth = list(enabled = TRUE, type = "curvedCW"))
+```
+
+From network graphs above, we can cluster the 12 groups into 2 clusters according to the number of nodes:
+
+1.  nodes \< 100: cod2 (6 nodes), lichen (17 nodes), salmon (8 nodes), shark (10 nodes) and tuna (29 nodes);
+
+2.  nodes \>= 100: carp (241 nodes), catfish (365 nodes), chub_mackerel (192 nodes), herring (195 nodes), mackerel (241 nodes), pollock (108 nodes) and salmon_wgl (120 nodes)
