@@ -782,7 +782,7 @@ tuna_nodes_df <- tuna_graph %>%
 
 ## 3.1 Network graph 
 
-### 3.1.1 Plot network graph over time
+### 3.1.1 Plot network graph
 
 Create a full graph using the same steps in section 2.3.
 
