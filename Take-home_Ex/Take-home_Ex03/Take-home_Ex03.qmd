@@ -1,5 +1,7 @@
 ---
 title: "Take-home_Ex03"
+author: "Zhou Ao"
+date: "2023-06-18"
 
 format:
   html: 

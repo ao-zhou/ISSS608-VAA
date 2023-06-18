@@ -205,7 +205,7 @@ visNetwork(nodes_df,
                          type = "curvedCW"))
 ```
 
-## 2.4 Preparing groups data 
+## 2.4 Preparing groups data
 
 Use the same methodology from section 2.3 to prepare network data from groups identified by FishEye.
 
@@ -780,7 +780,7 @@ tuna_nodes_df <- tuna_graph %>%
 
 # 3. Visualisation
 
-## 3.1 Network graph 
+## 3.1 Network graph
 
 ### 3.1.1 Plot network graph
 
@@ -829,14 +829,6 @@ visNetwork(nodes_df, edges_df) %>%
   visIgraphLayout(layout = "layout_in_circle") %>%
   visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
   visLayout(randomSeed = 123) 
-
-```
-
-```{r}
-
-```
-
-```{r}
 
 ```
 
